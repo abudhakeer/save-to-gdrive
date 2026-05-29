@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AirSave</title>
+    <meta name="manifest.type" content="browser_action" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="brand">
+          <div class="logo-container">
+            <svg class="drive-logo" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+              <path d="m6.6 66.85 15.4-26.75h50.3l-15.4 26.75z" fill="#0066da"/>
+              <path d="m29.85 26.75 15.4-26.75h30.8l-15.4 26.75z" fill="#00ac47"/>
+              <path d="m15.4 40.1 15.4-26.75h30.8l-15.4 26.75z" fill="#ffba00"/>
+            </svg>
+          </div>
+          <h1>AirSave</h1>
+        </div>
+        <div id="status-badge" class="badge badge-disconnected">Checking...</div>
+      </header>
+
+      <!-- Main Container -->
+      <main class="app-content">
+        <!-- Unauthorized Panel -->
+        <div id="panel-unauth" class="panel hidden">
+          <div class="info-card">
+            <p>Save web images, links, audio, and videos directly to your Google Drive via the right-click context menu.</p>
+            <ul class="feature-list">
+              <li>Direct transfer (bypasses local disk)</li>
+              <li>Keeps session credentials intact</li>
+              <li>Saves automatically to a single cloud folder</li>
+            </ul>
+          </div>
+          <button id="btn-login" class="btn btn-primary">
+            <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.24 10.285V13.4h6.86c-.277 1.56-1.602 4.585-6.86 4.585-4.54 0-8.24-3.765-8.24-8.4s3.7-8.4 8.24-8.4c2.58 0 4.307 1.095 5.298 2.045l2.465-2.37C18.435 1.21 15.62 0 12.24 0 5.58 0 0 5.37 0 12s5.58 12 12.24 12c6.96 0 11.57-4.89 11.57-11.79 0-.795-.085-1.4-.195-1.925H12.24z"/>
+            </svg>
+            Sign in with Google
+          </button>
+        </div>
+
+        <!-- Authorized Panel -->
+        <div id="panel-auth" class="panel hidden">
+          <div class="status-card">
+            <div class="folder-info">
+              <span class="label">Target Folder</span>
+              <span class="value">Saved from Browser</span>
+            </div>
+          </div>
+
+          <!-- History Section -->
+          <div class="history-section">
+            <div class="history-header">
+              <h2>Recent Uploads</h2>
+              <div class="filter-bar">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="image">Images</button>
+                <button class="filter-btn" data-filter="pdf">PDFs</button>
+              </div>
+            </div>
+            <div id="history-list" class="history-list">
+              <div class="empty-state">No files uploaded yet. Right-click any asset to start saving.</div>
+            </div>
+          </div>
+
+          <!-- Actions Footer -->
+          <footer class="panel-footer">
+            <button id="btn-logout" class="btn btn-secondary">Sign Out</button>
+          </footer>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
