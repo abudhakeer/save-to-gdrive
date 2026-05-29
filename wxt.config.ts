@@ -14,6 +14,9 @@ export default defineConfig({
         "277746463787-6419q14fi1bfkvsv1cs97mtuh94o51d2.apps.googleusercontent.com",
       scopes: ["https://www.googleapis.com/auth/drive.file"],
     },
+    manifest: {
+      key: "ancmikanfcngodakllchbicmkbgeclbn",
+    },
     icons: {
       "16": "icon/16.png",
       "32": "icon/32.png",
