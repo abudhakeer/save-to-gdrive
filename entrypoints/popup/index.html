@@ -22,6 +22,11 @@
           <h1>AirSave</h1>
         </div>
         <div class="header-right">
+          <button id="btn-info" class="btn-info" title="Capabilities Cheatsheet">
+            <svg class="info-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+            </svg>
+          </button>
           <div id="user-profile" class="user-profile hidden">
             <img id="user-avatar" class="user-avatar" src="" alt="avatar" />
             <span id="user-email" class="user-email"></span>
@@ -80,6 +85,63 @@
           </footer>
         </div>
       </main>
+
+      <!-- Info Modal Overlay -->
+      <div id="info-modal" class="modal hidden">
+        <div class="modal-content">
+          <header class="modal-header">
+            <h2>Capabilities Cheatsheet</h2>
+            <button id="btn-close-info" class="btn-close">&times;</button>
+          </header>
+          <div class="modal-body">
+            <p class="modal-intro">AirSave performs direct right-click uploads. Here is everything you can save:</p>
+            
+            <div class="capability-item">
+              <span class="cap-emoji">🖼️</span>
+              <div class="cap-details">
+                <h3>Images</h3>
+                <p>Right-click any web image and select <strong>"Save Image to Google Drive"</strong>.</p>
+              </div>
+            </div>
+
+            <div class="capability-item">
+              <span class="cap-emoji">🎵</span>
+              <div class="cap-details">
+                <h3>Audio & Video</h3>
+                <p>Right-click any audio/video element and select <strong>"Save Audio/Video to Google Drive"</strong>.</p>
+              </div>
+            </div>
+
+            <div class="capability-item">
+              <span class="cap-emoji">🔗</span>
+              <div class="cap-details">
+                <h3>Links & PDFs</h3>
+                <p>Right-click any download link (Spreadsheets, ZIPs, PDFs, etc.) and select <strong>"Save Linked File to Google Drive"</strong>.</p>
+              </div>
+            </div>
+
+            <div class="capability-item">
+              <span class="cap-emoji">📝</span>
+              <div class="cap-details">
+                <h3>Snippet Clipper</h3>
+                <p>Highlight text on a webpage, right-click, and select <strong>"Save Snippet to Google Drive"</strong>.</p>
+              </div>
+            </div>
+
+            <div class="capability-item">
+              <span class="cap-emoji">📸</span>
+              <div class="cap-details">
+                <h3>Screenshots</h3>
+                <p>Right-click any blank area of a page and select <strong>"Save Screenshot to Google Drive"</strong>.</p>
+              </div>
+            </div>
+            
+            <div class="modal-note">
+              <p>💡 All files are saved directly inside the target <strong>"Saved from Browser"</strong> folder in your Google Drive.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

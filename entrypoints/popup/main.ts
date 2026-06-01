@@ -14,6 +14,11 @@ const userProfile = document.getElementById('user-profile') as HTMLDivElement;
 const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
 const userEmail = document.getElementById('user-email') as HTMLSpanElement;
 
+// Info Modal elements
+const btnInfo = document.getElementById('btn-info') as HTMLButtonElement;
+const infoModal = document.getElementById('info-modal') as HTMLDivElement;
+const btnCloseInfo = document.getElementById('btn-close-info') as HTMLButtonElement;
+
 let currentToken: string | null = null;
 let currentFilter: string = 'all';
 
@@ -283,5 +288,20 @@ document.addEventListener('DOMContentLoaded', () => {
       currentFilter = target.getAttribute('data-filter') || 'all';
       renderHistory();
     });
+  });
+
+  // Toggle Info Modal Overlay
+  btnInfo.addEventListener('click', () => {
+    infoModal.classList.remove('hidden');
+  });
+
+  btnCloseInfo.addEventListener('click', () => {
+    infoModal.classList.add('hidden');
+  });
+
+  infoModal.addEventListener('click', (e) => {
+    if (e.target === infoModal) {
+      infoModal.classList.add('hidden');
+    }
   });
 });

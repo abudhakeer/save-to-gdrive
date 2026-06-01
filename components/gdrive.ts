@@ -147,79 +147,27 @@ async function getOrCreateFolderId(token: string): Promise<string> {
 }
 
 /**
- * Downloads a file from a URL as a Blob, then uploads it directly to Google Drive.
- * Passes along browser credentials (cookies) to support session-locked downloads.
+ * Core upload engine. Takes a Blob, uploads it to the target 'Saved from Browser' folder in Google Drive,
+ * and updates the cached history and shows notifications.
  */
-export async function downloadAndUploadToDrive(fileUrl: string, customName?: string): Promise<void> {
-  const notificationId = `save-${Date.now()}`;
-  let tempName = customName || fileUrl.split('/').pop()?.split('?')[0] || 'saved_file';
-  
+export async function uploadBlobToDrive(
+  blob: Blob,
+  fileName: string,
+  contentType: string,
+  notificationId: string
+): Promise<string> {
   try {
-    // Record initial "uploading" state in local history
-    const initialHistoryData = await chrome.storage.local.get('recent_uploads');
-    const initialHistoryList = (initialHistoryData.recent_uploads as any[]) || [];
-    initialHistoryList.unshift({
-      id: notificationId,
-      name: tempName,
-      status: 'uploading',
-      date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      url: '#',
-    });
-    await chrome.storage.local.set({ recent_uploads: initialHistoryList.slice(0, 15) });
-
-    showNotification(notificationId, 'Save to Drive', `Starting transfer of ${tempName}...`);
-
     // 1. Get access token
     const token = await getAccessToken(false).catch(async () => {
-      // Prompt interactive login if silent token acquisition fails
       return await getAccessToken(true);
     });
 
     // 2. Resolve folder ID
     const folderId = await getOrCreateFolderId(token);
 
-    // 3. Fetch file content in the background (self-healing credentials fallback to bypass CORS wildcards)
-    let fileResponse: Response;
-    try {
-      // Try standard fetch first (required for public resources with wildcard CORS headers like Wikipedia)
-      fileResponse = await fetch(fileUrl);
-      if (!fileResponse.ok) {
-        throw new Error('Fallback to credentials needed');
-      }
-    } catch (e) {
-      // Retry with credentials if the standard fetch fails or requires authorization
-      fileResponse = await fetch(fileUrl, {
-        credentials: 'include',
-      });
-    }
-
-    if (!fileResponse.ok) {
-      throw new Error(`Failed to fetch file: ${fileResponse.status} ${fileResponse.statusText}`);
-    }
-
-    const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
-    const blob = await fileResponse.blob();
-
-    // Check size limit (50MB)
-    const MAX_SIZE_BYTES = 50 * 1024 * 1024;
-    if (blob.size > MAX_SIZE_BYTES) {
-      throw new Error('File exceeds the maximum transfer size limit of 50MB.');
-    }
-
-    // Try to refine filename if not custom-specified
-    if (!customName) {
-      const disposition = fileResponse.headers.get('content-disposition');
-      if (disposition && disposition.includes('filename=')) {
-        const match = disposition.match(/filename="?([^";]+)"?/);
-        if (match && match[1]) {
-          tempName = match[1];
-        }
-      }
-    }
-
-    // 4. Perform Google Drive Multipart Upload
+    // 3. Perform Google Drive Multipart Upload
     const metadata = {
-      name: tempName,
+      name: fileName,
       parents: [folderId],
     };
 
@@ -228,8 +176,7 @@ export async function downloadAndUploadToDrive(fileUrl: string, customName?: str
     const closeDelimiter = `\r\n--${boundary}--`;
 
     const metadataPart = JSON.stringify(metadata);
-    
-    // Read blob as binary string or array buffer
+
     const reader = new FileReader();
     const uploadPromise = new Promise<string>((resolve, reject) => {
       reader.onload = async () => {
@@ -273,13 +220,13 @@ export async function downloadAndUploadToDrive(fileUrl: string, customName?: str
           reject(e);
         }
       };
-      
-      reader.onerror = () => reject(new Error('Failed to read downloaded file stream.'));
+
+      reader.onerror = () => reject(new Error('Failed to read binary data stream.'));
       reader.readAsBinaryString(blob);
     });
 
     const fileId = await uploadPromise;
-    
+
     // Update local storage history status to success
     const historyData = await chrome.storage.local.get('recent_uploads');
     let historyList = (historyData.recent_uploads as any[]) || [];
@@ -295,7 +242,8 @@ export async function downloadAndUploadToDrive(fileUrl: string, customName?: str
     });
     await chrome.storage.local.set({ recent_uploads: historyList });
 
-    showNotification(notificationId, 'Save Successful', `${tempName} successfully uploaded to Google Drive.`);
+    showNotification(notificationId, 'Save Successful', `${fileName} successfully uploaded to Google Drive.`);
+    return fileId;
   } catch (error: any) {
     // Update local storage history status to failed
     try {
@@ -315,6 +263,180 @@ export async function downloadAndUploadToDrive(fileUrl: string, customName?: str
       console.warn('Failed to update upload failure state in storage logs:', e);
     }
 
+    showNotification(notificationId, 'Upload Failed', error.message || 'An unknown error occurred.');
+    throw error;
+  }
+}
+
+/**
+ * Downloads a file from a URL as a Blob, then uploads it directly to Google Drive.
+ * Passes along browser credentials (cookies) to support session-locked downloads.
+ */
+export async function downloadAndUploadToDrive(fileUrl: string, customName?: string): Promise<void> {
+  const notificationId = `save-${Date.now()}`;
+  let tempName = customName || fileUrl.split('/').pop()?.split('?')[0] || 'saved_file';
+  
+  try {
+    // Record initial "uploading" state in local history
+    const initialHistoryData = await chrome.storage.local.get('recent_uploads');
+    const initialHistoryList = (initialHistoryData.recent_uploads as any[]) || [];
+    initialHistoryList.unshift({
+      id: notificationId,
+      name: tempName,
+      status: 'uploading',
+      date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      url: '#',
+    });
+    await chrome.storage.local.set({ recent_uploads: initialHistoryList.slice(0, 15) });
+
+    showNotification(notificationId, 'Save to Drive', `Starting transfer of ${tempName}...`);
+
+    // Fetch file content in the background (self-healing credentials fallback to bypass CORS wildcards)
+    let fileResponse: Response;
+    try {
+      // Try standard fetch first (required for public resources with wildcard CORS headers like Wikipedia)
+      fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error('Fallback to credentials needed');
+      }
+    } catch (e) {
+      // Retry with credentials if the standard fetch fails or requires authorization
+      fileResponse = await fetch(fileUrl, {
+        credentials: 'include',
+      });
+    }
+
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to fetch file: ${fileResponse.status} ${fileResponse.statusText}`);
+    }
+
+    const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+    const blob = await fileResponse.blob();
+
+    // Check size limit (50MB)
+    const MAX_SIZE_BYTES = 50 * 1024 * 1024;
+    if (blob.size > MAX_SIZE_BYTES) {
+      throw new Error('File exceeds the maximum transfer size limit of 50MB.');
+    }
+
+    // Try to refine filename if not custom-specified
+    if (!customName) {
+      const disposition = fileResponse.headers.get('content-disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^";]+)"?/);
+        if (match && match[1]) {
+          tempName = match[1];
+        }
+      }
+    }
+
+    await uploadBlobToDrive(blob, tempName, contentType, notificationId);
+  } catch (error: any) {
+    try {
+      const historyData = await chrome.storage.local.get('recent_uploads');
+      let historyList = (historyData.recent_uploads as any[]) || [];
+      historyList = historyList.map((item: any) => {
+        if (item.id === notificationId) {
+          return { ...item, status: 'failed' };
+        }
+        return item;
+      });
+      await chrome.storage.local.set({ recent_uploads: historyList });
+    } catch (e) {}
+    showNotification(notificationId, 'Upload Failed', error.message || 'An unknown error occurred.');
+  }
+}
+
+/**
+ * Saves a text snippet to Google Drive as a .txt file.
+ */
+export async function uploadTextSnippetToDrive(text: string, sourceUrl: string): Promise<void> {
+  const notificationId = `save-${Date.now()}`;
+  const timestamp = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fileName = `Snippet_${Date.now()}.txt`;
+  
+  try {
+    // Record initial "uploading" state in local history
+    const initialHistoryData = await chrome.storage.local.get('recent_uploads');
+    const initialHistoryList = (initialHistoryData.recent_uploads as any[]) || [];
+    initialHistoryList.unshift({
+      id: notificationId,
+      name: `Snippet (${timestamp})`,
+      status: 'uploading',
+      date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      url: '#',
+    });
+    await chrome.storage.local.set({ recent_uploads: initialHistoryList.slice(0, 15) });
+
+    showNotification(notificationId, 'Clipping Snippet', 'Saving web text snippet to Google Drive...');
+
+    const fileContent = `AirSave Snippet
+============================================================
+Source URL : ${sourceUrl}
+Date Saved : ${timestamp}
+============================================================
+
+${text}
+`;
+
+    const blob = new Blob([fileContent], { type: 'text/plain' });
+    await uploadBlobToDrive(blob, fileName, 'text/plain', notificationId);
+  } catch (error: any) {
+    try {
+      const historyData = await chrome.storage.local.get('recent_uploads');
+      let historyList = (historyData.recent_uploads as any[]) || [];
+      historyList = historyList.map((item: any) => {
+        if (item.id === notificationId) {
+          return { ...item, status: 'failed' };
+        }
+        return item;
+      });
+      await chrome.storage.local.set({ recent_uploads: historyList });
+    } catch (e) {}
+    showNotification(notificationId, 'Upload Failed', error.message || 'An unknown error occurred.');
+  }
+}
+
+/**
+ * Saves a screenshot data URL to Google Drive as a PNG.
+ */
+export async function uploadScreenshotToDrive(dataUrl: string): Promise<void> {
+  const notificationId = `save-${Date.now()}`;
+  const timestamp = new Date().toISOString().slice(0, 10) + '_' + new Date().toTimeString().slice(0, 5).replace(':', '-');
+  const fileName = `Screenshot_${timestamp}.png`;
+
+  try {
+    // Record initial "uploading" state in local history
+    const initialHistoryData = await chrome.storage.local.get('recent_uploads');
+    const initialHistoryList = (initialHistoryData.recent_uploads as any[]) || [];
+    initialHistoryList.unshift({
+      id: notificationId,
+      name: fileName,
+      status: 'uploading',
+      date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      url: '#',
+    });
+    await chrome.storage.local.set({ recent_uploads: initialHistoryList.slice(0, 15) });
+
+    showNotification(notificationId, 'Capturing Screenshot', 'Uploading webpage viewport capture...');
+
+    // Convert data URI to Blob
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+
+    await uploadBlobToDrive(blob, fileName, 'image/png', notificationId);
+  } catch (error: any) {
+    try {
+      const historyData = await chrome.storage.local.get('recent_uploads');
+      let historyList = (historyData.recent_uploads as any[]) || [];
+      historyList = historyList.map((item: any) => {
+        if (item.id === notificationId) {
+          return { ...item, status: 'failed' };
+        }
+        return item;
+      });
+      await chrome.storage.local.set({ recent_uploads: historyList });
+    } catch (e) {}
     showNotification(notificationId, 'Upload Failed', error.message || 'An unknown error occurred.');
   }
 }
