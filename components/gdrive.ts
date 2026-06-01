@@ -318,3 +318,80 @@ export async function downloadAndUploadToDrive(fileUrl: string, customName?: str
     showNotification(notificationId, 'Upload Failed', error.message || 'An unknown error occurred.');
   }
 }
+
+export interface UserProfile {
+  email: string;
+  name: string;
+  photoUrl: string;
+}
+
+/**
+ * Fetches basic user info from Google Drive API to show logged in details.
+ */
+export async function getUserProfile(token: string): Promise<UserProfile> {
+  const url = 'https://www.googleapis.com/drive/v3/about?fields=user';
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      await invalidateToken(token);
+    }
+    throw new Error('Failed to fetch user profile.');
+  }
+
+  const data = await response.json();
+  return {
+    email: data.user.emailAddress || '',
+    name: data.user.displayName || '',
+    photoUrl: data.user.photoLink || '',
+  };
+}
+
+export interface DriveFileItem {
+  id: string;
+  name: string;
+  status: 'success' | 'uploading' | 'failed';
+  url: string;
+  timestamp: string;
+}
+
+/**
+ * Fetches the actual files contained within the target folder in Google Drive.
+ */
+export async function fetchRecentUploads(token: string): Promise<DriveFileItem[]> {
+  try {
+    const folderId = await getOrCreateFolderId(token);
+    const query = `'${folderId}' in parents and trashed = false`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,webViewLink,createdTime)&orderBy=createdTime+desc&pageSize=15`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        await invalidateToken(token);
+      }
+      throw new Error('Failed to fetch files from Google Drive.');
+    }
+
+    const data = await response.json();
+    const files = data.files || [];
+    return files.map((file: any) => ({
+      id: file.id,
+      name: file.name,
+      status: 'success',
+      url: file.webViewLink,
+      timestamp: new Date(file.createdTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }));
+  } catch (error) {
+    console.error('Error fetching files:', error);
+    return [];
+  }
+}

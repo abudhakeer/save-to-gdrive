@@ -1,5 +1,5 @@
 import './style.css';
-import { getAccessToken, invalidateToken } from '../../components/gdrive';
+import { getAccessToken, invalidateToken, getUserProfile, fetchRecentUploads } from '../../components/gdrive';
 
 // DOM elements
 const statusBadge = document.getElementById('status-badge') as HTMLDivElement;
@@ -8,6 +8,11 @@ const panelAuth = document.getElementById('panel-auth') as HTMLDivElement;
 const btnLogin = document.getElementById('btn-login') as HTMLButtonElement;
 const btnLogout = document.getElementById('btn-logout') as HTMLButtonElement;
 const historyList = document.getElementById('history-list') as HTMLDivElement;
+
+// User Profile elements
+const userProfile = document.getElementById('user-profile') as HTMLDivElement;
+const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
+const userEmail = document.getElementById('user-email') as HTMLSpanElement;
 
 let currentToken: string | null = null;
 let currentFilter: string = 'all';
@@ -83,6 +88,43 @@ function escapeHtml(unsafe: string): string {
 }
 
 /**
+ * Live sync background cache history with the user's Google Drive files inside 'Saved from Browser'.
+ */
+async function syncHistoryWithGoogleDrive(token: string): Promise<void> {
+  try {
+    const liveFiles = await fetchRecentUploads(token);
+    
+    // Get existing local history
+    const data = await chrome.storage.local.get('recent_uploads');
+    const localList = (data.recent_uploads as any[]) || [];
+    
+    // Filter to keep only active/failed pending background uploads
+    const pendingList = localList.filter(item => item.status === 'uploading' || item.status === 'failed');
+    
+    // Merge: pending files always show at the very top, followed by live drive files
+    const mergedList = [...pendingList];
+    for (const file of liveFiles) {
+      // Avoid duplicates
+      const exists = pendingList.some(p => p.name === file.name);
+      if (!exists) {
+        mergedList.push({
+          id: file.id,
+          name: file.name,
+          date: file.timestamp,
+          url: file.url,
+          status: 'success'
+        });
+      }
+    }
+    
+    // Save merged list back to storage (triggers storage change observer to re-render popups)
+    await chrome.storage.local.set({ recent_uploads: mergedList.slice(0, 15) });
+  } catch (error) {
+    console.warn('Failed to sync history with Google Drive:', error);
+  }
+}
+
+/**
  * Transition UI to authorized state.
  */
 function setAuthorizedState(token: string): void {
@@ -91,7 +133,21 @@ function setAuthorizedState(token: string): void {
   statusBadge.className = 'badge badge-connected';
   panelUnauth.classList.add('hidden');
   panelAuth.classList.remove('hidden');
+  
+  // Render instantly from local storage cache
   renderHistory();
+
+  // Async: Load user details and update header
+  getUserProfile(token).then((profile) => {
+    userEmail.textContent = profile.email;
+    userAvatar.src = profile.photoUrl || '/wxt.svg';
+    userProfile.classList.remove('hidden');
+  }).catch((err) => {
+    console.warn('Failed to load user profile details:', err);
+  });
+
+  // Async: Sync local upload history with Google Drive live files
+  syncHistoryWithGoogleDrive(token);
 }
 
 /**
@@ -103,6 +159,11 @@ function setUnauthorizedState(): void {
   statusBadge.className = 'badge badge-disconnected';
   panelUnauth.classList.remove('hidden');
   panelAuth.classList.add('hidden');
+
+  // Hide and reset profile UI
+  userProfile.classList.add('hidden');
+  userEmail.textContent = '';
+  userAvatar.src = '';
 }
 
 /**
