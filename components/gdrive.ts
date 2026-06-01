@@ -12,7 +12,7 @@ export interface UploadProgress {
   message: string;
 }
 
-const CLIENT_ID = '277746463787-6419q14fi1bfkvsv1cs97mtuh94o51d2.apps.googleusercontent.com';
+const CLIENT_ID = '277746463787-7pbq41lkcnmcjb3m9j78od09ul3a2jn0.apps.googleusercontent.com';
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 const TOKEN_STORAGE_KEY = 'google_drive_access_token';
 
