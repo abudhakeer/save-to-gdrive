@@ -513,3 +513,33 @@ body {
   text-overflow: ellipsis;
 }
 
+/* History Item Actions and Dismiss button */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.btn-dismiss:hover {
+  background: hsla(350, 80%, 60%, 0.15);
+  color: var(--color-danger);
+}
+
+

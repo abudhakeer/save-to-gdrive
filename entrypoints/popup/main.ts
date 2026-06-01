@@ -50,15 +50,25 @@ async function renderHistory(): Promise<void> {
   }
 
   historyList.innerHTML = filteredUploads
-    .map((item: { name: string; date: string; url: string; status?: 'uploading' | 'success' | 'failed' }) => {
-      let actionHtml = `<a href="${escapeHtml(item.url)}" target="_blank" class="item-link">View</a>`;
+    .map((item: { id: string; name: string; date: string; url: string; status?: 'uploading' | 'success' | 'failed' }) => {
+      let actionHtml = `
+        <div class="action-buttons">
+          <a href="${escapeHtml(item.url)}" target="_blank" class="item-link">View</a>
+          <button class="btn-dismiss" data-id="${escapeHtml(item.id)}" title="Remove from list">×</button>
+        </div>
+      `;
       let statusClass = '';
 
       if (item.status === 'uploading') {
         actionHtml = `<span class="item-status status-uploading"><span class="pulse-dot"></span>Saving</span>`;
         statusClass = 'state-uploading';
       } else if (item.status === 'failed') {
-        actionHtml = `<span class="item-status status-failed">Failed</span>`;
+        actionHtml = `
+          <div class="action-buttons">
+            <span class="item-status status-failed">Failed</span>
+            <button class="btn-dismiss" data-id="${escapeHtml(item.id)}" title="Remove from list">×</button>
+          </div>
+        `;
         statusClass = 'state-failed';
       }
 
@@ -98,15 +108,20 @@ async function syncHistoryWithGoogleDrive(token: string): Promise<void> {
     const data = await chrome.storage.local.get('recent_uploads');
     const localList = (data.recent_uploads as any[]) || [];
     
+    // Get dismissed file IDs to filter out from live sync list
+    const dismissedData = await chrome.storage.local.get('dismissed_file_ids');
+    const dismissed = (dismissedData.dismissed_file_ids as string[]) || [];
+
     // Filter to keep only active/failed pending background uploads
     const pendingList = localList.filter(item => item.status === 'uploading' || item.status === 'failed');
     
     // Merge: pending files always show at the very top, followed by live drive files
     const mergedList = [...pendingList];
     for (const file of liveFiles) {
-      // Avoid duplicates
+      // Avoid duplicates and check dismissed list
       const exists = pendingList.some(p => p.name === file.name);
-      if (!exists) {
+      const isDismissed = dismissed.includes(file.id);
+      if (!exists && !isDismissed) {
         mergedList.push({
           id: file.id,
           name: file.name,
@@ -202,8 +217,12 @@ btnLogout.addEventListener('click', async () => {
       await new Promise<void>((resolve) => {
         chrome.identity.clearAllCachedAuthTokens(() => resolve());
       });
-      // Clear folder ID cache
-      await chrome.storage.local.remove('google_drive_folder_id');
+      // Clear folder ID, local uploads, and dismissed file cache
+      await chrome.storage.local.remove([
+        'google_drive_folder_id',
+        'recent_uploads',
+        'dismissed_file_ids'
+      ]);
     } catch (e) {
       console.warn('Error clearing cached tokens:', e);
     }
@@ -215,6 +234,36 @@ btnLogout.addEventListener('click', async () => {
 chrome.storage.onChanged.addListener((changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
   if (areaName === 'local' && changes.recent_uploads) {
     renderHistory();
+  }
+});
+
+// Handle dismiss button clicks (Event delegation on the historyList container)
+historyList.addEventListener('click', async (e) => {
+  const target = e.target as HTMLElement;
+  if (target.classList.contains('btn-dismiss') || target.closest('.btn-dismiss')) {
+    const btn = target.classList.contains('btn-dismiss') ? target : target.closest('.btn-dismiss') as HTMLElement;
+    const fileId = btn.getAttribute('data-id');
+    if (!fileId) return;
+
+    try {
+      // 1. Fetch current dismissed file list from storage
+      const dismissedData = await chrome.storage.local.get('dismissed_file_ids');
+      const dismissedList = (dismissedData.dismissed_file_ids as string[]) || [];
+
+      // 2. Add to dismissed list if not present
+      if (!dismissedList.includes(fileId)) {
+        dismissedList.push(fileId);
+        await chrome.storage.local.set({ dismissed_file_ids: dismissedList });
+      }
+
+      // 3. Immediately filter local storage uploads cache to trigger instant UI update
+      const localData = await chrome.storage.local.get('recent_uploads');
+      const localList = (localData.recent_uploads as any[]) || [];
+      const updatedList = localList.filter(item => item.id !== fileId);
+      await chrome.storage.local.set({ recent_uploads: updatedList });
+    } catch (err) {
+      console.error('Failed to dismiss file from extension:', err);
+    }
   }
 });
 
