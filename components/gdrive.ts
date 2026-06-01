@@ -12,21 +12,63 @@ export interface UploadProgress {
   message: string;
 }
 
+const CLIENT_ID = '277746463787-6419q14fi1bfkvsv1cs97mtuh94o51d2.apps.googleusercontent.com';
+const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const TOKEN_STORAGE_KEY = 'google_drive_access_token';
+
 /**
- * Retrieves the OAuth2 access token via chrome.identity.
+ * Retrieves the OAuth2 access token via chrome.identity.launchWebAuthFlow for cross-browser compatibility.
  * @param interactive Whether to show the Google login prompt if not authenticated.
  */
 export async function getAccessToken(interactive: boolean = false): Promise<string> {
+  // 1. Check local storage for cached token first
+  const storage = await chrome.storage.local.get(TOKEN_STORAGE_KEY);
+  if (storage[TOKEN_STORAGE_KEY]) {
+    return storage[TOKEN_STORAGE_KEY] as string;
+  }
+
+  // If not interactive and no cached token, fail fast
+  if (!interactive) {
+    throw new Error('No active sign-in session found. Please sign in.');
+  }
+
+  // 2. Launch OAuth web flow
   return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive }, ((token: any) => {
+    const redirectUri = chrome.identity.getRedirectURL(); // e.g. https://ancmikanfcngodakllchbicmkbgeclbn.chromiumapp.org/
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + 
+      `client_id=${CLIENT_ID}` +
+      `&response_type=token` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&scope=${encodeURIComponent(SCOPES.join(' '))}`;
+
+    chrome.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: true
+    }, (responseUrl) => {
       if (chrome.runtime.lastError) {
         return reject(new Error(chrome.runtime.lastError.message));
       }
-      if (!token) {
-        return reject(new Error('Failed to acquire Google Drive access token. Please sign in.'));
+      if (!responseUrl) {
+        return reject(new Error('Sign-in cancelled or failed.'));
       }
-      resolve(token);
-    }) as any);
+
+      try {
+        const url = new URL(responseUrl);
+        // Extract the token from the hash fragment
+        const hashParams = new URLSearchParams(url.hash.substring(1));
+        const token = hashParams.get('access_token');
+        if (!token) {
+          return reject(new Error('No access token found in response.'));
+        }
+
+        // Cache the token in local storage
+        chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: token }, () => {
+          resolve(token);
+        });
+      } catch (err: any) {
+        reject(new Error('Failed to parse authentication response: ' + err.message));
+      }
+    });
   });
 }
 
@@ -34,11 +76,7 @@ export async function getAccessToken(interactive: boolean = false): Promise<stri
  * Invalidates the cached token when a 401 Unauthorized occurs.
  */
 export async function invalidateToken(token: string): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.identity.removeCachedAuthToken({ token }, () => {
-      resolve();
-    });
-  });
+  await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
 }
 
 /**
